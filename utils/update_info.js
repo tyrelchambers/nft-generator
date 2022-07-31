@@ -14,6 +14,10 @@ const {
 let rawdata = fs.readFileSync(`${basePath}/build/json/_metadata.json`);
 let data = JSON.parse(rawdata);
 
+data.sort(function (a, b) {
+  return a.edition - b.edition;
+});
+
 data.forEach((item) => {
   if (network == NETWORK.sol) {
     item.name = `${namePrefix} #${item.edition}`;

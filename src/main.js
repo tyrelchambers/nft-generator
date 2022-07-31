@@ -1,10 +1,10 @@
 const basePath = process.cwd();
 const { NETWORK } = require(`${basePath}/constants/network.js`);
 const fs = require("fs");
-const sha1 = require(`${basePath}/node_modules/sha1`);
-const { createCanvas, loadImage } = require(`${basePath}/node_modules/canvas`);
-const buildDir = `${basePath}/build`;
-const layersDir = `${basePath}/layers`;
+const sha1 = require("sha1");
+const { createCanvas, loadImage } = require("canvas");
+const { buildDir, layersDir } = require("../constants/constants");
+
 const {
   format,
   baseUri,
@@ -28,7 +28,7 @@ ctx.imageSmoothingEnabled = format.smoothing;
 var metadataList = [];
 var attributesList = [];
 var dnaList = new Set();
-const DNA_DELIMITER = "-";
+const DNA_DELIMITER = "!";
 const HashlipsGiffer = require(`${basePath}/modules/HashlipsGiffer.js`);
 
 let hashlipsGiffer = null;
@@ -45,15 +45,15 @@ const buildSetup = () => {
   }
 };
 
+// calculate the rarity of the element
 const getRarityWeight = (_str) => {
   let nameWithoutExtension = _str.slice(0, -4);
-  var nameWithoutWeight = Number(
-    nameWithoutExtension.split(rarityDelimiter).pop()
-  );
-  if (isNaN(nameWithoutWeight)) {
-    nameWithoutWeight = 1;
+  var rarity = Number(nameWithoutExtension.split(rarityDelimiter).pop());
+  if (isNaN(rarity)) {
+    rarity = 1;
   }
-  return nameWithoutWeight;
+
+  return rarity;
 };
 
 const cleanDna = (_str) => {
@@ -62,12 +62,15 @@ const cleanDna = (_str) => {
   return dna;
 };
 
+// removes extension from filename and removes the weight. The weight is
+// denoted by a # in the name followed by a number.
 const cleanName = (_str) => {
   let nameWithoutExtension = _str.slice(0, -4);
   var nameWithoutWeight = nameWithoutExtension.split(rarityDelimiter).shift();
   return nameWithoutWeight;
 };
 
+// gets all layers from /layers and parses their values based on the filename
 const getElements = (path) => {
   return fs
     .readdirSync(path)
@@ -86,6 +89,8 @@ const getElements = (path) => {
     });
 };
 
+// goes through each folder in /layers and grabs one item from each folder to build
+// the layers for the NFT
 const layersSetup = (layersOrder) => {
   const layers = layersOrder.map((layerObj, index) => ({
     id: index,
@@ -107,9 +112,11 @@ const layersSetup = (layersOrder) => {
         ? layerObj.options?.["bypassDNA"]
         : false,
   }));
+
   return layers;
 };
 
+// saves image to disk frmo a canvas
 const saveImage = (_editionCount) => {
   fs.writeFileSync(
     `${buildDir}/images/${_editionCount}.png`,
@@ -123,11 +130,15 @@ const genColor = () => {
   return pastel;
 };
 
+// creates the background the NFT sits on
 const drawBackground = () => {
   ctx.fillStyle = background.static ? background.default : genColor();
   ctx.fillRect(0, 0, format.width, format.height);
 };
 
+/*
+  Adds default metadata to NFT with network specific options/properties
+*/
 const addMetadata = (_dna, _edition) => {
   let dateTime = Date.now();
   let tempMetadata = {
@@ -143,14 +154,11 @@ const addMetadata = (_dna, _edition) => {
   };
   if (network == NETWORK.sol) {
     tempMetadata = {
-      //Added metadata for solana
       name: tempMetadata.name,
       symbol: solanaMetadata.symbol,
       description: tempMetadata.description,
-      //Added metadata for solana
       seller_fee_basis_points: solanaMetadata.seller_fee_basis_points,
       image: `${_edition}.png`,
-      //Added metadata for solana
       external_url: solanaMetadata.external_url,
       edition: _edition,
       ...extraMetadata,
@@ -171,6 +179,7 @@ const addMetadata = (_dna, _edition) => {
   attributesList = [];
 };
 
+// part of NFT metadata. Lists the attributes in the metadata JSON per generated NFT
 const addAttributes = (_element) => {
   let selectedElement = _element.layer.selectedElement;
   attributesList.push({
@@ -179,6 +188,7 @@ const addAttributes = (_element) => {
   });
 };
 
+// ??
 const loadLayerImg = async (_layer) => {
   try {
     return new Promise(async (resolve) => {
@@ -190,6 +200,7 @@ const loadLayerImg = async (_layer) => {
   }
 };
 
+// ??
 const addText = (_sig, x, y, size) => {
   ctx.fillStyle = text.color;
   ctx.font = `${text.weight} ${size}pt ${text.family}`;
@@ -231,6 +242,7 @@ const constructLayerToDna = (_dna = "", _layers = []) => {
       selectedElement: selectedElement,
     };
   });
+
   return mappedDnaToLayers;
 };
 
@@ -281,16 +293,21 @@ const isDnaUnique = (_DnaList = new Set(), _dna = "") => {
 
 const createDna = (_layers) => {
   let randNum = [];
+
   _layers.forEach((layer) => {
     var totalWeight = 0;
+
+    // loops through each NFT layer (everything in the /layers folder)
     layer.elements.forEach((element) => {
+      // element weight is represented by the # in the layer name in /layers/some_folder/layer_name#rarity/weight
       totalWeight += element.weight;
     });
-    // number between 0 - totalWeight
+    // number between 0 - totalWeight. x
     let random = Math.floor(Math.random() * totalWeight);
     for (var i = 0; i < layer.elements.length; i++) {
       // subtract the current weight from the random weight until we reach a sub zero value.
       random -= layer.elements[i].weight;
+
       if (random < 0) {
         return randNum.push(
           `${layer.elements[i].id}:${layer.elements[i].filename}${
@@ -346,20 +363,28 @@ const startCreating = async () => {
   ) {
     abstractedIndexes.push(i);
   }
+
+  // this shuffles the layers of each NFT as defined in
+  //  layerConfigurations
+
   if (shuffleLayerConfigurations) {
     abstractedIndexes = shuffle(abstractedIndexes);
   }
+
   debugLogs
     ? console.log("Editions left to create: ", abstractedIndexes)
     : null;
+
   while (layerConfigIndex < layerConfigurations.length) {
     const layers = layersSetup(
       layerConfigurations[layerConfigIndex].layersOrder
     );
+
     while (
       editionCount <= layerConfigurations[layerConfigIndex].growEditionSizeTo
     ) {
       let newDna = createDna(layers);
+
       if (isDnaUnique(dnaList, newDna)) {
         let results = constructLayerToDna(newDna, layers);
         let loadedElements = [];
