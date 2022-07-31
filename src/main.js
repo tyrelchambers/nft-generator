@@ -308,6 +308,7 @@ const createDna = (_layers) => {
       // subtract the current weight from the random weight until we reach a sub zero value.
       random -= layer.elements[i].weight;
 
+      // not sure what purpose this serves
       if (random < 0) {
         return randNum.push(
           `${layer.elements[i].id}:${layer.elements[i].filename}${
